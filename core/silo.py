@@ -300,7 +300,11 @@ def _parse_silo_csv(raw: str, source: str = "unknown") -> pd.DataFrame:
             "Try again in a few minutes, or from a different network."
         )
 
-    # Find header line
+    # Find header line — handles all known SILO formats:
+    #   Old patched point : "date,daily_rain,..."         date=YYYYMMDD integer
+    #   New patched point : "station,YYYY-MM-DD,..."      date=ISO string
+    #   DataDrill old     : "date,daily_rain,..."         date=YYYYMMDD integer
+    #   DataDrill new     : "latitude,longitude,YYYY-MM-DD,..."
     header_idx = None
     date_col   = None
     date_fmt   = None
@@ -309,6 +313,12 @@ def _parse_silo_csv(raw: str, source: str = "unknown") -> pd.DataFrame:
         low = line.strip().lower()
         if not low or low.startswith("#"):
             continue
+        if low.startswith("station,yyyy") or low.startswith("station,20") or low.startswith("station,19") or low.startswith("station,18"):
+            # New patched point format: station,YYYY-MM-DD,daily_rain,...
+            header_idx = i
+            date_col   = "yyyy-mm-dd"
+            date_fmt   = "%Y-%m-%d"
+            break
         if low.startswith("date"):
             header_idx = i
             date_col   = "date"
@@ -324,9 +334,8 @@ def _parse_silo_csv(raw: str, source: str = "unknown") -> pd.DataFrame:
             try:
                 candidate = int(low.split()[0])
                 if 18800101 <= candidate <= 21001231:
-                    # Data starts here, no proper header — build one
                     header_idx = i
-                    date_col   = None   # signal for whitespace path
+                    date_col   = None
                     break
             except ValueError:
                 pass
@@ -376,8 +385,14 @@ def _parse_silo_csv(raw: str, source: str = "unknown") -> pd.DataFrame:
     raw_df   = pd.read_csv(io.StringIO(csv_text))
     raw_df.columns = [c.strip().lower().split("(")[0].strip() for c in raw_df.columns]
 
+    # New patched point format has 'station' + 'yyyy-mm-dd' columns
+    # Rename 'yyyy-mm-dd' to a known key if present
+    if "yyyy-mm-dd" in raw_df.columns:
+        date_col = "yyyy-mm-dd"
+        date_fmt = "%Y-%m-%d"
+
     # Resolve date column
-    if date_col in raw_df.columns:
+    if date_col and date_col in raw_df.columns:
         df_index = pd.to_datetime(
             raw_df[date_col].astype(str), format=date_fmt, errors="coerce"
         )
