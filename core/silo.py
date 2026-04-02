@@ -87,16 +87,24 @@ def fetch_station_rainfall(station_id: int, start: str, end: str) -> pd.DataFram
     return df[["rain", "year", "month", "day", "doy"]]
 
 
-def fetch_patched_point(station_id: int, start: str, end: str) -> pd.DataFrame:
+def fetch_patched_point(station_id: int, start: str, end: str,
+                        variables: str = "R") -> pd.DataFrame:
     """
     Fetch full daily met from SILO Patched Point.
     Used by 2_Odds.py.
-    Alias for fetch_station_met — returns all climate variables.
+
+    Parameters
+    ----------
+    station_id : int    SILO station number
+    start      : str    YYYYMMDD
+    end        : str    YYYYMMDD
+    variables  : str    SILO comment code (default "R" = rainfall only,
+                        "RD" = rain + extras). Ignored — always fetches
+                        full set so all pages get what they need.
 
     Returns
     -------
-    pd.DataFrame indexed by date with columns:
-        rain, epan, tmax, tmin, tmean, radiation, vp, year, month, day, doy
+    pd.DataFrame indexed by date — same columns as fetch_station_met.
     """
     return fetch_station_met(station_id, start, end)
 
