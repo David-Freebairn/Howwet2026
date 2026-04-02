@@ -5,7 +5,7 @@ Home.py — Landing page for the rainfall-tools suite
 import streamlit as st
 
 st.set_page_config(
-    page_title="Rainfall Tools",
+    page_title="Risk Status",
     page_icon="🌧️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -36,7 +36,7 @@ html, body, [class*="css"] { font-family: 'Source Sans 3', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("# 🌧️ Rainfall Tools")
+st.markdown("# 🌧️ Risk Status")
 st.markdown(
     "*A suite of Australian rainfall and soil water analysis tools "
     "powered by [SILO](https://www.longpaddock.qld.gov.au/silo/) climate data.*"
@@ -48,7 +48,7 @@ col1, col2, col3 = st.columns(3)
 with col1:
     st.markdown("""
     <div class="tool-card">
-        <div class="tool-title">📈 How is the season going?</div>
+        <div class="tool-title">📈 How's the season?</div>
         <div class="tool-desc">
             Compare this season's cumulative rainfall against all years on record.
             See where you sit as a percentile and how far above or below the median you are.
@@ -75,12 +75,12 @@ with col2:
 with col3:
     st.markdown("""
     <div class="tool-card">
-        <div class="tool-title">💧 Howwet — Soil Water Monitor</div>
+        <div class="tool-title">💧 How much rain stored?</div>
         <div class="tool-desc">
             Run the PERFECT/HowLeaky water balance model for any location in Australia.
             Track plant available soil water over a fallow period against historical years.
         </div>
-        <span class="data-badge">SILO DataDrill</span>
+        <span class="data-badge">SILO Patched Point</span>
     </div>
     """, unsafe_allow_html=True)
     st.page_link("pages/3_Howwet.py", label="Open →", icon="💧")

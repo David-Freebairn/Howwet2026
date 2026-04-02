@@ -573,12 +573,27 @@ def fetch_datadrill_robust(
 
 def fetch_station_rainfall(station_id: int, start: str, end: str) -> pd.DataFrame:
     """
-    Convenience wrapper — fetch rainfall only from a patched-point station.
-    Returns a simple DataFrame with columns: date, year, month, day, rain.
-    This is the format used by both Season and Odds pages.
+    Fetch rainfall only from a patched-point station.
+    Used by Season and Odds pages.
     """
     df = fetch_patched_point(station_id, start, end, variables="R")
     return df[["year", "month", "day", "rain"]].copy()
+
+
+# ── Convenience: full met DataFrame (Howwet) ─────────────────────────────────
+
+def fetch_station_met(station_id: int, start: str, end: str) -> pd.DataFrame:
+    """
+    Fetch full daily met from a patched-point station using P51 variables.
+    Returns DataFrame with: rain, epan, tmax, tmin, tmean, radiation, vp,
+                            year, month, day, doy.
+    Used by Howwet — same station-search flow as Season and Odds.
+    Falls back to radiation-based epan estimate if station has no pan evap.
+    """
+    variables = "daily_rain,evap_pan,max_temp,min_temp,radiation,vp"
+    df = fetch_patched_point(station_id, start, end, variables=variables)
+    df = _fill_epan(df)
+    return df
 
 
 # ── Standalone test ───────────────────────────────────────────────────────────
