@@ -264,17 +264,15 @@ with st.container(border=True):
     with r1e: st.markdown('<span style="font-size:1rem">days</span>', unsafe_allow_html=True)
 
     st.markdown("")
-    r2a, r2b, r2c, r2d, r2e, r2f, r2g, r2h, r2i = st.columns(
-        [1.4, 0.8, 0.5, 0.8, 1.0, 0.8, 0.5, 0.8, 1.5])
+    r2a, r2b, r2c, r2d, r2e, r2f, r2g = st.columns([1.6, 1.5, 0.5, 0.4, 1.5, 0.5, 1.0])
     with r2a: st.markdown('<span style="font-size:1rem">during the season</span>',
                           unsafe_allow_html=True)
     with r2b: start_mon = st.selectbox("sm", MONTHS, index=0, label_visibility="collapsed")
     with r2c: start_day = st.number_input("sd", min_value=1, max_value=31, value=1,
                                           label_visibility="collapsed")
-    with r2d: st.markdown("")
-    with r2e: st.markdown('<span style="font-size:1rem">to</span>', unsafe_allow_html=True)
-    with r2f: end_mon = st.selectbox("em", MONTHS, index=11, label_visibility="collapsed")
-    with r2g: end_day = st.number_input("ed", min_value=1, max_value=31, value=31,
+    with r2d: st.markdown('<span style="font-size:1rem">to</span>', unsafe_allow_html=True)
+    with r2e: end_mon = st.selectbox("em", MONTHS, index=11, label_visibility="collapsed")
+    with r2f: end_day = st.number_input("ed", min_value=1, max_value=31, value=31,
                                          label_visibility="collapsed")
 
 run_btn = st.button("Fetch data and run analysis", type="primary",
