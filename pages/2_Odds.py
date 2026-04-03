@@ -284,16 +284,10 @@ if run_btn and selected_station:
         n_exceed   = int(np.sum(rain >= threshold))
         pct        = n_exceed / n * 100
 
-        st.markdown(f"""<div class="result-banner">
-          <div>
-            <div class="rb-label">Exceedance frequency</div>
-            <div class="rb-value">
-              {n_exceed} of {n} years exceeded {int(threshold)} mm
-              in {int(win_days)} days
-            </div>
-          </div>
-          <div class="rb-pct">{int(round(pct))}%</div>
-        </div>""", unsafe_allow_html=True)
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Station", name)
+        m2.metric("Years exceeded threshold", f"{n_exceed} of {n}")
+        m3.metric("Exceedance frequency", f"{int(round(pct))}%")
 
         # Chart
         NAVY = "#0b1f3a"; BLUE = "#2979c4"; BRIGHT = "#4da6ff"
