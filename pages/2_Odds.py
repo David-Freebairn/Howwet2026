@@ -24,40 +24,8 @@ st.set_page_config(page_title="What are the odds?", page_icon="🎲", layout="wi
 MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 apply_styles()
-st.markdown("""
-<style>
-.result-banner {
-    background: #0b1f3a;
-    border-radius: 8px;
-    padding: 0.75rem 1.2rem;
-    margin: 0.8rem 0;
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-}
-.rb-label {
-    font-size: 0.72rem;
-    color: #5d8ab0;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-.rb-value {
-    font-size: 1.4rem;
-    font-weight: 800;
-    color: #ffffff;
-    line-height: 1;
-}
-.rb-pct {
-    font-size: 2rem;
-    font-weight: 800;
-    color: #4da6ff;
-    margin-left: auto;
-}
-</style>
-""", unsafe_allow_html=True)
 
-
+ 
 # ── Session state ─────────────────────────────────────────────────────────────
 for key, default in [
     ("df", None), ("station_name", None), ("stations", []),
