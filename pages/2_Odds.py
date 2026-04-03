@@ -336,7 +336,49 @@ if run_btn and selected_station:
             Patch(color=MISS, label=f"< {int(threshold)} mm  ({n - n_exceed} yrs)"),
         ], fontsize=9, loc="upper left", framealpha=0.95, edgecolor=GRID, fancybox=False)
         fig.tight_layout(pad=1.1)
-        # ── Build summary card ────────────────────────────────────────────
+        # ── HTML summary card ─────────────────────────────────────────────
+        ann_mean = round(df["rain"].groupby(df.index.year).sum().mean())
+        st.markdown(f"""
+<div style="border:1px solid #c8d8ec; border-radius:10px; overflow:hidden; margin-bottom:1rem;">
+  <div style="background:#2979c4; padding:0.6rem 1.2rem; text-align:center;">
+    <span style="color:white; font-size:1rem; font-weight:700; letter-spacing:0.03em;">
+      What are the odds? &nbsp;·&nbsp; Rain frequency summary
+    </span>
+  </div>
+  <div style="padding:1rem 1.4rem;">
+    <div style="font-size:1.25rem; font-weight:800; color:#0b1f3a; margin-bottom:0.2rem;">
+      {name}
+    </div>
+    <div style="font-size:0.9rem; color:#4a6e94; margin-bottom:0.1rem;">
+      Season: {slabel} &nbsp;&nbsp;&nbsp; Record: {yr_from}–{yr_to}
+    </div>
+    <div style="font-size:0.85rem; color:#6a8aaa; margin-bottom:0.8rem;">
+      Annual mean rainfall {ann_mean}mm
+    </div>
+    <hr style="border-color:#d0dcea; margin:0.5rem 0;">
+    <div style="font-size:0.9rem; color:#5a7a9a; margin-bottom:1rem;">
+      Query: &nbsp; ≥ {int(threshold)} mm rain within any {int(win_days)}-day window &nbsp;·&nbsp; {slabel}
+    </div>
+    <div style="display:flex; align-items:center; gap:2rem;">
+      <div style="flex:1; text-align:center;">
+        <div style="font-size:2rem; font-weight:800; color:#0b1f3a;">{n_exceed} of {n} years</div>
+        <div style="font-size:0.9rem; color:#6a8aaa; margin-top:4px;">met or exceeded the threshold</div>
+      </div>
+      <div style="width:1px; background:#d0dcea; align-self:stretch;"></div>
+      <div style="flex:0 0 160px; text-align:center;">
+        <div style="font-size:3.5rem; font-weight:900; color:#2979c4; line-height:1;">{int(round(pct))}%</div>
+        <div style="font-size:0.85rem; color:#8aaac4; margin-top:4px;">exceedance frequency</div>
+      </div>
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        # ── Bar chart ─────────────────────────────────────────────────────
+        st.pyplot(fig)
+        plt.close(fig)
+
+        # ── Build JPEG summary for download (keep matplotlib version) ─────
         import io as _io
         from matplotlib.patches import FancyBboxPatch
         summary_fig, summary_ax = plt.subplots(figsize=(10, 4.0))
@@ -361,7 +403,7 @@ if run_btn and selected_station:
             ha="left", va="center", fontsize=10.5, color="#4a6e94", zorder=2)
         summary_ax.plot([0.4, 9.6], [2.38, 2.38], color="#d0dcea", lw=1.0, zorder=2)
         summary_ax.text(0.4, 2.12,
-            f"Query:  ≥ {int(threshold)} mm rain within any {int(win_days)}-day window  ·  {slabel}",
+            f"Query:  >= {int(threshold)} mm rain within any {int(win_days)}-day window  .  {slabel}",
             ha="left", va="center", fontsize=10.5, color="#5a7a9a", zorder=2)
         summary_ax.text(4.2, 1.28, f"{n_exceed} of {n} years",
             ha="center", va="center", fontsize=21, fontweight="bold",
@@ -375,20 +417,11 @@ if run_btn and selected_station:
             ha="center", va="center", fontsize=9, color="#8aaac4", zorder=2)
         summary_ax.plot([6.5, 6.5], [0.35, 1.85], color="#d0dcea", lw=1.0, zorder=2)
         summary_fig.tight_layout(pad=0)
-
-        # ── Show summary card first ───────────────────────────────────────
-        st.pyplot(summary_fig)
-
-        # ── Then bar chart ────────────────────────────────────────────────
-        st.pyplot(fig)
-
-        # ── Save summary to buffer for download ───────────────────────────
         jpeg_buf = _io.BytesIO()
         summary_fig.savefig(jpeg_buf, format="jpeg", dpi=150,
                             bbox_inches="tight", facecolor="#ffffff")
         jpeg_buf.seek(0)
         plt.close(summary_fig)
-        plt.close(fig)
 
         # ── Downloads ─────────────────────────────────────────────────────
         dl1, dl2 = st.columns(2)
