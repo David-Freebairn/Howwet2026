@@ -27,20 +27,33 @@ apply_styles()
 st.markdown("""
 <style>
 .result-banner {
+    background: #0b1f3a;
+    border-radius: 8px;
+    padding: 0.75rem 1.2rem;
+    margin: 0.8rem 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    background: #EBF2FB;
-    border: 1px solid #C5D5E8;
-    border-left: 5px solid #2979c4;
-    border-radius: 8px;
-    padding: 1rem 1.4rem;
-    margin-bottom: 1rem;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
-.rb-label { font-size: 0.8rem; color: #5a7a9a; text-transform: uppercase;
-            letter-spacing: 0.05em; margin-bottom: 4px; }
-.rb-value { font-size: 1rem; font-weight: 600; color: #0b1f3a; }
-.rb-pct   { font-size: 3rem; font-weight: 800; color: #2979c4; line-height: 1; }
+.rb-label {
+    font-size: 0.72rem;
+    color: #5d8ab0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+.rb-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: #ffffff;
+    line-height: 1;
+}
+.rb-pct {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #4da6ff;
+    margin-left: auto;
+}
 </style>
 """, unsafe_allow_html=True)
 
