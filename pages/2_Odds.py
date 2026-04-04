@@ -384,9 +384,9 @@ if run_btn and selected_station:
             )
         with dl2:
             st.download_button(
-                "🖼️  Download summary image",
+                "🖼️  Download summary",
                 data=jpeg_buf,
-                file_name=f"rain_summary_{name.replace(' ', '_')}.jpg",
+                file_name=f"Odds_summary_{name.replace(' ', '_')}.jpg",
                 mime="image/jpeg",
             )
 
