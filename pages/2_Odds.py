@@ -391,7 +391,7 @@ if run_btn and selected_station:
                  ha="left", va="top", fontsize=13, fontweight="bold", color="#1a3a5c",
                  transform=hax.transAxes)
 
-        # Sentence line
+        # Sentence line — use display coords then convert to axes fraction
         parts = [
             ("Rainfall exceeded ", "#444", False),
             (f"{int(threshold)} mm", "#e06b00", True),
@@ -402,19 +402,23 @@ if run_btn and selected_station:
             (" and ", "#444", False),
             (f"{ed_i} {MONTHS[em-1]}", "#2979c4", True),
         ]
+        comp_fig.canvas.draw()
+        renderer = comp_fig.canvas.get_renderer()
+        ax_bbox = hax.get_window_extent(renderer=renderer)  # axes bbox in display px
         x_cur = 0.012
-        y_row = 0.10
+        y_row = 0.18
         for txt, col, bold in parts:
             t = hax.text(x_cur, y_row, txt,
                          ha="left", va="top", fontsize=10,
                          fontweight="bold" if bold else "normal",
                          color=col, transform=hax.transAxes)
             comp_fig.canvas.draw()
-            bb = t.get_window_extent(renderer=comp_fig.canvas.get_renderer())
-            x_cur += bb.width / (comp_fig.get_figwidth() * DPI)
+            bb = t.get_window_extent(renderer=renderer)
+            # convert pixel width to axes-fraction width
+            x_cur += bb.width / ax_bbox.width
 
         # Pct of years — right-aligned
-        hax.text(0.988, 0.10,
+        hax.text(0.988, 0.18,
                  f"{pct_display}% of years",
                  ha="right", va="top", fontsize=13, fontweight="bold", color="#0b1f3a",
                  transform=hax.transAxes)
