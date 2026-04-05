@@ -64,13 +64,14 @@ def _search(query: str):
     return search_stations(query)
 
 
+# Version tag — increment to bust the Streamlit cache when silo.py changes
+_SILO_CACHE_V = "v4"
+
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id: int, start: str, end: str) -> pd.DataFrame:
+def _fetch(station_id: int, start: str, end: str, _v: str = _SILO_CACHE_V) -> pd.DataFrame:
     """
     Cached patched-point fetch — full P51 variables.
-    Returns: rain, epan, tmax, tmin, tmean, radiation, vp, year, month, day, doy.
-    Same station-search flow as Season and Odds — faster and more accurate
-    than DataDrill as it uses actual observed station data.
+    _v is a version tag: change it to bust the cache after silo.py updates.
     """
     return fetch_station_met(station_id, start, end)
 
