@@ -442,6 +442,16 @@ if run_clicked:
         st.error(f"Recent climate fetch failed: {e}")
         st.stop()
 
+    # ── Debug: show what SILO returned ────────────────────────────────────
+    epan_sum = recent_met["epan"].fillna(0).sum() if "epan" in recent_met.columns else 0
+    if epan_sum < 1.0:
+        cols = list(recent_met.columns)
+        st.warning(
+            f"⚠️ Pan evaporation missing from SILO (epan sum = {epan_sum:.1f} mm).  "
+            f"Columns returned: `{cols}`.  "
+            f"Soil evaporation will be zero — check station {sid} has evap_pan data."
+        )
+
     status.markdown(
         f'<p class="status-msg">Fetching {HISTORY_YEARS}-year historical climate...</p>',
         unsafe_allow_html=True)
