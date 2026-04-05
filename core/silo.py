@@ -1,14 +1,17 @@
 """
 core/silo.py
 ============
-SILO Patched Point API helpers used by all pages.
+SILO climate data helpers used by all pages.
 
-Public API
-----------
-search_stations(query)                         -> list of station dicts
-fetch_station_rainfall(station_id, start, end) -> pd.DataFrame
-fetch_patched_point(station_id, start, end)    -> pd.DataFrame
-fetch_station_met(station_id, start, end)      -> pd.DataFrame
+Uses DataDrillDataset.php (lat/lon) with urllib.request.
+Each variable is fetched in a separate request — multi-variable
+comment strings trigger the SILO WAF and are rejected.
+
+Proven working approach from app.py development (March 2026):
+  - urllib.request only (requests library triggers WAF)
+  - Single variable per call
+  - DataDrill endpoint with lat/lon from station search
+  - New response format: latitude,longitude,YYYY-MM-DD,{var},{var}_source,...
 """
 
 import urllib.parse
@@ -16,11 +19,11 @@ import urllib.request
 import io
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
-# ── Config ─────────────────────────────────────────────────────────────────
-_BASE  = "https://www.longpaddock.qld.gov.au/cgi-bin/silo/PatchedPointDataset.php"
-_EMAIL = "david.freebairn@gmail.com"
+# ── Config ───────────────────────────────────────────────────────────────────
+_DATADRILL  = "https://www.longpaddock.qld.gov.au/cgi-bin/silo/DataDrillDataset.php"
+_PATCHEDPT  = "https://www.longpaddock.qld.gov.au/cgi-bin/silo/PatchedPointDataset.php"
+_EMAIL      = "david.freebairn@gmail.com"
 
 _HEADERS = {
     "User-Agent": (
@@ -33,14 +36,11 @@ _HEADERS = {
 }
 
 
-# ── Station search ──────────────────────────────────────────────────────────
+# ── Station search (PatchedPoint - name search only) ─────────────────────────
 
 def search_stations(query: str) -> list:
-    """
-    Search SILO for stations matching a name fragment.
-    Returns list of dicts: { id, name, label, lat, lon, state }
-    """
-    url = (f"{_BASE}?format=name"
+    """Search SILO for stations matching a name fragment."""
+    url = (f"{_PATCHEDPT}?format=name"
            f"&nameFrag={urllib.parse.quote(query.strip())}"
            f"&username={urllib.parse.quote(_EMAIL)}")
     try:
@@ -76,132 +76,147 @@ def search_stations(query: str) -> list:
     return stations
 
 
-# ── Fetch ───────────────────────────────────────────────────────────────────
+# ── Low-level DataDrill fetch ─────────────────────────────────────────────────
 
-def fetch_station_met(station_id: int, start: str, end: str) -> pd.DataFrame:
+def _fetch_one(lat: float, lon: float, start: str, end: str,
+               variable: str) -> str:
     """
-    Fetch SILO patched-point met data for a station.
-    Single request returning all variables.
+    Fetch a single variable from SILO DataDrill using urllib.request.
+    Returns raw CSV text.
+
+    Key: urllib.request not requests (requests triggers WAF).
+    Single variable only — multi-variable comment is WAF-blocked.
     """
-    params = urllib.parse.urlencode({
-        "station":  station_id,
+    base = urllib.parse.urlencode({
+        "lat":      lat,
+        "lon":      lon,
         "start":    start,
         "finish":   end,
         "format":   "csv",
-        "comment":  "evap_pan",
         "username": _EMAIL,
         "password": "apirequest",
     })
-    # Append rain+met variables manually so commas are NOT percent-encoded
-    # (SILO WAF blocks %2C in the comment parameter)
-    url = f"{_BASE}?{params}"
-    url = url.replace("comment=evap_pan",
-                      "comment=daily_rain,max_temp,min_temp,evap_pan,radiation")
-
-    try:
-        req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except Exception as exc:
-        raise RuntimeError(
-            f"SILO fetch failed for station {station_id}: {exc}"
-        ) from exc
-
+    url = f"{_DATADRILL}?{base}&comment={variable}"
+    req = urllib.request.Request(url, headers=_HEADERS)
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        raw = resp.read().decode("utf-8", errors="replace")
     if "<html" in raw.lower()[:200]:
         raise RuntimeError(
-            f"SILO WAF rejected request for station {station_id}.\n"
-            f"Response: {raw[:300]}"
+            f"SILO WAF rejected {variable} request.\n"
+            f"Response: {raw[:200]}"
         )
+    return raw
 
-    return _parse_patched_point(raw, station_id)
 
-
-def _parse_patched_point(text: str, station_id: int) -> pd.DataFrame:
+def _parse_one(raw: str, col_name: str) -> pd.Series:
     """
-    Parse SILO Patched Point CSV response.
+    Parse a single-variable DataDrill response.
 
-    Handles all known SILO format variations:
-      New (2025+): station,YYYY-MM-DD,{var},{var}_source,metadata
-      Old multi-col: Date,daily_rain,max_temp,min_temp,evap_pan,...
+    New format (2025+):
+        latitude,longitude,YYYY-MM-DD,{var},{var}_source,metadata,...
+    Old format:
+        Date,daily_rain,max_temp,...
     """
-    lines = text.splitlines()
+    lines = raw.splitlines()
 
-    # Find the header row — must have comma/tab AND contain a date/station indicator
-    header_idx = None
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if "," not in stripped and "\t" not in stripped:
-            continue
-        low = stripped.lower()
-        tokens = [t.strip() for t in low.replace("\t", ",").split(",")]
-        if any(t in ("date", "yyyy-mm-dd", "yyyymmdd", "station") for t in tokens):
-            header_idx = i
-            break
-        if any("rain" in t and "source" not in t for t in tokens):
-            header_idx = i
-            break
-
-    if header_idx is None:
+    # Find header row
+    hi = next(
+        (i for i, ln in enumerate(lines)
+         if ln.strip() and "," in ln and
+            any(t in ln.strip().lower()
+                for t in ("date", "yyyy", "latitude", "station"))),
+        None,
+    )
+    if hi is None:
         raise RuntimeError(
-            f"Could not find header in SILO response for station {station_id}.\n"
-            f"Preview: {text[:400]}"
+            f"No header in SILO response for {col_name}.\n"
+            f"Preview: {raw[:300]}"
         )
 
-    sep = "\t" if "\t" in lines[header_idx] else ","
-    csv_lines = [l for l in lines[header_idx:]
-                 if l.strip() and not l.strip().startswith("#")]
-    raw_df = pd.read_csv(io.StringIO("\n".join(csv_lines)), sep=sep, dtype=str)
+    df = pd.read_csv(io.StringIO("\n".join(lines[hi:])), dtype=str, low_memory=False)
+    df.columns = [c.strip().lower() for c in df.columns]
 
-    # Normalise column names
-    raw_df.columns = [c.strip().lower().replace(" ", "_").replace("(", "_")
-                      .replace(")", "").rstrip("_")
-                      for c in raw_df.columns]
-
-    # ── Date column ──────────────────────────────────────────────────────────
-    date_col = None
-    for c in raw_df.columns:
-        if c in ("date", "yyyy-mm-dd", "yyyymmdd"):
-            date_col = c
-            break
-    if date_col is None:
-        # Fall back: first col that looks like a date
-        for c in raw_df.columns:
-            sample = str(raw_df[c].iloc[0]).strip()
-            if len(sample) in (8, 10) and (sample.isdigit() or "-" in sample):
-                date_col = c
-                break
+    # Find date column
+    date_col = next(
+        (c for c in df.columns
+         if c in ("date", "yyyy-mm-dd", "yyyymmdd") or
+            ("yyyy" in c and "source" not in c)),
+        None,
+    )
     if date_col is None:
         raise RuntimeError(
-            f"No date column for station {station_id}. "
-            f"Columns: {list(raw_df.columns)}"
+            f"No date column for {col_name}. Columns: {list(df.columns)}"
         )
 
-    date_raw = raw_df[date_col].astype(str).str.strip()
-    sample = date_raw.iloc[0]
-    fmt = "%Y%m%d" if (len(sample) == 8 and sample.isdigit()) else "%Y-%m-%d"
-    dates = pd.to_datetime(date_raw, format=fmt, errors="coerce")
-    valid = dates.notna()
-    raw_df = raw_df[valid].copy()
-    dates  = dates[valid]
+    # Parse dates
+    dates = pd.to_datetime(
+        df[date_col].astype(str).str.strip(), errors="coerce"
+    )
 
-    out = pd.DataFrame(index=dates)
+    # Find value column: skip lat, lon, date, source, metadata cols
+    skip = {date_col, "latitude", "longitude", "station", "metadata"}
+    skip.update(c for c in df.columns if "_source" in c)
+    val_cols = [c for c in df.columns if c not in skip]
+
+    if not val_cols:
+        raise RuntimeError(
+            f"No value column for {col_name}. Columns: {list(df.columns)}"
+        )
+
+    values = pd.to_numeric(df[val_cols[0]], errors="coerce")
+
+    s = pd.Series(values.values, index=dates, name=col_name)
+    s = s[s.index.notna()]
+    s = s[~s.index.duplicated(keep="first")]
+    return s.sort_index()
+
+
+# ── Core fetch ────────────────────────────────────────────────────────────────
+
+def fetch_station_met(station_id: int, start: str, end: str,
+                      lat: float = None, lon: float = None) -> pd.DataFrame:
+    """
+    Fetch SILO climate data for a station.
+
+    Uses DataDrill (lat/lon) with one urllib.request call per variable.
+    lat/lon are taken from the station dict returned by search_stations().
+    If not provided, raises an error — lat/lon are required for DataDrill.
+    """
+    if lat is None or lon is None:
+        raise RuntimeError(
+            "fetch_station_met requires lat and lon. "
+            "Pass them from the station dict returned by search_stations()."
+        )
+
+    variables = [
+        ("daily_rain", "rain"),
+        ("max_temp",   "tmax"),
+        ("min_temp",   "tmin"),
+        ("evap_pan",   "epan"),
+        ("radiation",  "radiation"),
+    ]
+
+    series = {}
+    for var_code, col_name in variables:
+        try:
+            raw = _fetch_one(lat, lon, start, end, var_code)
+            series[col_name] = _parse_one(raw, col_name)
+        except Exception:
+            series[col_name] = None
+
+    if series.get("rain") is None:
+        raise RuntimeError(
+            f"Could not fetch rainfall for station {station_id} "
+            f"({lat}, {lon})."
+        )
+
+    idx = series["rain"].index
+    out = pd.DataFrame(index=idx)
     out.index.name = "date"
 
-    def _get(*candidates):
-        for c in candidates:
-            if c in raw_df.columns:
-                return pd.to_numeric(raw_df[c], errors="coerce").values
-        return np.full(len(raw_df), np.nan)
-
-    out["rain"]      = _get("daily_rain", "rain", "rainfall_mm", "rainfall")
-    out["tmax"]      = _get("max_temp",   "maximum_temperature_c", "tmax")
-    out["tmin"]      = _get("min_temp",   "minimum_temperature_c", "tmin")
-    out["epan"]      = _get("evap_pan",   "evaporation_mm", "epan", "pan_evap",
-                            "evap", "evaporation")
-    out["radiation"] = _get("radiation",  "solar_radiation_mj_m2")
-    out["vp"]        = _get("vp",         "vapour_pressure_hpa")
+    for col in ["rain", "tmax", "tmin", "epan", "radiation"]:
+        s = series.get(col)
+        out[col] = s.reindex(idx).values if s is not None else np.nan
 
     out["tmean"] = (out["tmax"] + out["tmin"]) / 2.0
     out["year"]  = out.index.year
@@ -212,7 +227,7 @@ def _parse_patched_point(text: str, station_id: int) -> pd.DataFrame:
     out["rain"] = out["rain"].fillna(0.0).clip(lower=0.0)
     out["epan"] = out["epan"].fillna(0.0)
 
-    # Fallback: estimate epan from radiation if all zero
+    # Fallback: estimate epan from radiation if missing
     if out["epan"].sum() < 1.0:
         try:
             rs    = out["radiation"].fillna(out["radiation"].median())
@@ -221,23 +236,20 @@ def _parse_patched_point(text: str, station_id: int) -> pd.DataFrame:
         except Exception:
             out["epan"] = 5.0
 
-    if len(out) == 0:
-        raise RuntimeError(
-            f"No valid rows parsed from SILO for station {station_id}."
-        )
-
     return out
 
 
-# ── Convenience wrappers ─────────────────────────────────────────────────────
+# ── Convenience wrappers ──────────────────────────────────────────────────────
 
-def fetch_station_rainfall(station_id: int, start: str, end: str) -> pd.DataFrame:
+def fetch_station_rainfall(station_id: int, start: str, end: str,
+                           lat: float = None, lon: float = None) -> pd.DataFrame:
     """Fetch daily rainfall only. Used by 1_Season.py."""
-    df = fetch_station_met(station_id, start, end)
+    df = fetch_station_met(station_id, start, end, lat=lat, lon=lon)
     return df[["rain", "year", "month", "day", "doy"]]
 
 
 def fetch_patched_point(station_id: int, start: str, end: str,
-                        variables: str = "R") -> pd.DataFrame:
+                        variables: str = "R",
+                        lat: float = None, lon: float = None) -> pd.DataFrame:
     """Full met fetch. Used by 2_Odds.py."""
-    return fetch_station_met(station_id, start, end)
+    return fetch_station_met(station_id, start, end, lat=lat, lon=lon)
