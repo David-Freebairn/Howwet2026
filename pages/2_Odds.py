@@ -54,11 +54,11 @@ def _search(term):
     return search_stations(term)
 
 
-SILO_CACHE_V = "v4"
+SILO_CACHE_V = "v7"
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id, start, end, cache_version=SILO_CACHE_V):
-    return fetch_patched_point(station_id, start, end, variables="R")
+def _fetch(station_id, start, end, lat=None, lon=None, cache_version=SILO_CACHE_V):
+    return fetch_patched_point(station_id, start, end, variables="R", lat=lat, lon=lon)
 
 
 def parse_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -214,13 +214,15 @@ run_btn = st.button("Fetch data and run analysis", type="primary",
 # ── Analysis ──────────────────────────────────────────────────────────────────
 if run_btn and selected_station:
     sid  = selected_station["id"]
+    _lat = selected_station.get("lat")
+    _lon = selected_station.get("lon")
     name = selected_station["name"]
     end_str   = date.today().strftime("%Y%m%d")
     start_str = start_date.strftime("%Y%m%d")
 
     with st.spinner(f"Fetching data for {name}..."):
         try:
-            df = _fetch(sid, start_str, end_str)
+            df = _fetch(sid, start_str, end_str, _lat, _lon)
             df = parse_df(df)
         except Exception as e:
             st.error(f"Data fetch failed: {e}")

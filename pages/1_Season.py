@@ -51,11 +51,11 @@ def _search(query: str):
     return search_stations(query)
 
 
-SILO_CACHE_V = "v4"
+SILO_CACHE_V = "v7"
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id: int, start: str, end: str, cache_version: str = SILO_CACHE_V) -> pd.DataFrame:
-    return fetch_station_rainfall(station_id, start, end)
+def _fetch(station_id: int, start: str, end: str, lat: float = None, lon: float = None, cache_version: str = SILO_CACHE_V) -> pd.DataFrame:
+    return fetch_station_rainfall(station_id, start, end, lat=lat, lon=lon)
 
 
 def days_in_month(y: int, m: int) -> int:
@@ -399,13 +399,15 @@ if run_clicked or st.session_state.get("se_result"):
             st.stop()
 
         sid  = station_info["id"]
+        _lat = station_info.get("lat")
+        _lon = station_info.get("lon")
         name = station_info["name"]
         end_str   = date.today().strftime("%Y%m%d")
         start_str = f"{int(start_year)}0101"
 
         with st.spinner(f"Fetching data for {name}..."):
             try:
-                df = _fetch(sid, start_str, end_str)
+                df = _fetch(sid, start_str, end_str, _lat, _lon)
             except Exception as e:
                 st.error(f"Data fetch failed: {e}")
                 st.stop()

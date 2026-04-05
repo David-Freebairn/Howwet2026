@@ -65,15 +65,12 @@ def _search(query: str):
 
 
 # Version tag — increment to bust the Streamlit cache when silo.py changes
-_SILO_CACHE_V = "v4"
+# Increment SILO_CACHE_V to bust the Streamlit cache after silo.py changes
+SILO_CACHE_V = "v7"
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id: int, start: str, end: str, _v: str = _SILO_CACHE_V) -> pd.DataFrame:
-    """
-    Cached patched-point fetch — full P51 variables.
-    _v is a version tag: change it to bust the cache after silo.py updates.
-    """
-    return fetch_station_met(station_id, start, end)
+def _fetch(station_id: int, start: str, end: str, lat: float = None, lon: float = None, cache_version: str = SILO_CACHE_V) -> pd.DataFrame:
+    return fetch_station_met(station_id, start, end, lat=lat, lon=lon)
 
 
 def load_soil_files():
@@ -436,7 +433,7 @@ if run_clicked:
     status.markdown('<p class="status-msg">Fetching recent climate from SILO...</p>',
                     unsafe_allow_html=True)
     try:
-        recent_met = _fetch(sid, start_str, end_str)
+        recent_met = _fetch(sid, start_str, end_str, _lat, _lon)
         end_date   = recent_met.index.max().date()
     except Exception as e:
         status.empty()
@@ -459,7 +456,7 @@ if run_clicked:
     try:
         hist_met = _fetch(sid,
                           hist_start.strftime("%Y%m%d"),
-                          hist_end.strftime("%Y%m%d"))
+                          hist_end.strftime("%Y%m%d"), _lat, _lon)
     except Exception as e:
         status.empty()
         st.error(f"Historical climate fetch failed: {e}")
