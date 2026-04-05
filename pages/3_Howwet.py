@@ -120,6 +120,7 @@ def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5)
         if np.isnan(rain): rain = 0.0
         if np.isnan(epan): epan = 0.0
 
+        sw_before = float(sw.sum())
         out = daily_water_balance(
             sw=sw, layers=layers, soil=profile,
             rain=rain, epan=epan,
@@ -135,10 +136,15 @@ def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5)
         dsr    = out["t_since_wet"]   # engine returns dsr in this slot
 
         sw_total = float(sw.sum())
-        # PASW: layer-by-layer, clamped at zero — matches run_simulation.py
+        # PASW: layer-by-layer, clamped at zero
         pasw = sum(
             max(0.0, float(sw[i]) - layers[i].ll_mm)
             for i in range(len(layers))
+        )
+        # Back-calculate actual soil evap from mass balance — works regardless
+        # of which engine version is in core/ (robust to old and new engine)
+        actual_es = max(0.0,
+            sw_before + rain - out["runoff"] - out["drainage"] - out["transp"] - sw_total
         )
 
         records.append({
@@ -148,10 +154,10 @@ def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5)
             "tmin"      : float(row.get("tmin") or np.nan),
             "radiation" : float(row.get("radiation") or 0),
             "runoff"    : out["runoff"],
-            "soil_evap" : out["soil_evap"],   # direct from engine (not back-calculated)
+            "soil_evap" : actual_es,
             "transp"    : out["transp"],
             "drainage"  : out["drainage"],
-            "et"        : out["et"],
+            "et"        : actual_es + out["transp"],
             "sw_total"  : sw_total,
             "pasw"      : round(pasw, 2),
             "sw_layers" : sw.copy().tolist(),
