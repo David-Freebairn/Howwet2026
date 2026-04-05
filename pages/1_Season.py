@@ -347,15 +347,15 @@ with st.container(border=True):
                             st.session_state["se_confirmed"] = False
                     station_info = next(s for s in stations if s["label"] == chosen)
                 else:
-                    st.caption(f"**{len(labels)} stations found** — select one:")
-                    def _pick():
+                    current_index = labels.index(chosen) if chosen in labels else 0
+                    st.caption(f"**{len(labels)} stations found** — click to select:")
+                    def on_station_pick():
                         st.session_state["se_chosen"]    = st.session_state["se_radio"]
                         st.session_state["se_confirmed"] = True
                     chosen = st.radio(
-                        "Station", labels,
-                        index=labels.index(chosen) if chosen in labels else 0,
+                        "Station", options=labels, index=current_index,
                         key="se_radio", label_visibility="collapsed",
-                        on_change=_pick,
+                        on_change=on_station_pick,
                     )
                     st.session_state["se_chosen"] = chosen
                     station_info = next(s for s in stations if s["label"] == chosen)
@@ -367,16 +367,16 @@ with st.container(border=True):
 # ── Step 2: Select duration ───────────────────────────────────────────────────
 with st.container(border=True):
     st.markdown('<p class="section-title">Select duration</p>', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([2.5, 1, 2])
-    with col1:
-        st.markdown("How does the last")
-    with col2:
+    r1a, r1b, r1c = st.columns([2.5, 0.7, 2.5])
+    with r1a:
+        st.markdown('<span style="font-size:1rem">How does the last</span>', unsafe_allow_html=True)
+    with r1b:
         months_back = st.number_input(
             "months", label_visibility="collapsed",
             min_value=1, max_value=60, value=6, step=1,
         )
-    with col3:
-        st.markdown("months compare with all years?")
+    with r1c:
+        st.markdown('<span style="font-size:1rem">months compare with all years on record?</span>', unsafe_allow_html=True)
 
 col_l, col_c, col_r = st.columns([1, 2, 1])
 with col_c:
