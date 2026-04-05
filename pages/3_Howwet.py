@@ -647,9 +647,11 @@ if run_clicked:
 | Δ Soil water | {dsw:.1f} | {dsw/rain_t*100:.1f} |
 | **Water check** | **{err:.3f}** | |
         """)
+        epan_mean = recent_df['epan'].mean() if 'epan' in recent_df.columns else 0.0
+        epan_src  = "SILO pan evap" if recent_met["epan"].fillna(0).sum() > 10 else "estimated from radiation/temp"
         st.caption(
             f"{temp_note}"
-            f"Epan: {recent_df['epan'].mean():.1f} mm/day mean  |  "
+            f"Epan: {epan_mean:.1f} mm/day mean ({epan_src})  |  "
             f"PAW start: {recent_df['pasw'].iloc[0]:.0f} mm  "
             f"PAW end: {recent_df['pasw'].iloc[-1]:.0f} mm  |  "
             f"PAWC: {pawc:.0f} mm  |  Init: {init_pct}% of PAWC"
