@@ -97,19 +97,21 @@ def load_profile(soil_path: Path):
 
 def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5):
     """
-    Run daily PERFECT fallow water balance.
+    Run daily PERFECT fallow water balance using the best HowLeaky engine.
 
-    Climate columns used now:
+    Uses the full two-stage Ritchie soil evaporation with DSR accumulation,
+    AMC-based SCS curve number runoff, and layer-by-layer PASW calculation.
+
+    Climate columns used:
         rain      — daily rainfall (mm)
         epan      — pan evaporation (mm)
-    Available for future use (fetched, stored in output, not yet used in model):
-        tmax, tmin — temperature (°C)
-        radiation  — solar radiation (MJ/m²/d)
     """
     layers = profile.layers
     sw     = init_sw(profile, init_fraction)
     sw0    = float(sw.sum())
-    sumes1 = sumes2 = t_since_wet = 0.0
+    # sumes1/sumes2: stage-I and stage-II evap accumulators (mm)
+    # dsr: days-since-rain equivalent for stage-II (replaces t_since_wet)
+    sumes1 = sumes2 = dsr = 0.0
     records = []
 
     for dt, row in met_df.iterrows():
@@ -118,7 +120,6 @@ def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5)
         if np.isnan(rain): rain = 0.0
         if np.isnan(epan): epan = 0.0
 
-        sw_before = float(sw.sum())
         out = daily_water_balance(
             sw=sw, layers=layers, soil=profile,
             rain=rain, epan=epan,
@@ -126,34 +127,31 @@ def run_water_balance(met_df: pd.DataFrame, profile, init_fraction: float = 0.5)
             total_cover=FIXED_TOTAL,
             root_depth_mm=0.0,
             crop_factor=1.0,
-            sumes1=sumes1, sumes2=sumes2, t_since_wet=t_since_wet,
+            sumes1=sumes1, sumes2=sumes2, t_since_wet=dsr,
         )
-        sw          = out["sw"]
-        sumes1      = out["sumes1"]
-        sumes2      = out["sumes2"]
-        t_since_wet = out["t_since_wet"]
+        sw     = out["sw"]
+        sumes1 = out["sumes1"]
+        sumes2 = out["sumes2"]
+        dsr    = out["t_since_wet"]   # engine returns dsr in this slot
 
-        sw_total  = float(sw.sum())
-        pasw      = sum(
+        sw_total = float(sw.sum())
+        # PASW: layer-by-layer, clamped at zero — matches run_simulation.py
+        pasw = sum(
             max(0.0, float(sw[i]) - layers[i].ll_mm)
             for i in range(len(layers))
-        )
-        actual_es = max(
-            0.0,
-            sw_before + rain - out["runoff"] - out["drainage"] - out["transp"] - sw_total,
         )
 
         records.append({
             "rain"      : rain,
             "epan"      : epan,
-            "tmax"      : float(row.get("tmax") or np.nan),  # stored for future use
-            "tmin"      : float(row.get("tmin") or np.nan),  # stored for future use
+            "tmax"      : float(row.get("tmax") or np.nan),
+            "tmin"      : float(row.get("tmin") or np.nan),
             "radiation" : float(row.get("radiation") or 0),
             "runoff"    : out["runoff"],
-            "soil_evap" : actual_es,
+            "soil_evap" : out["soil_evap"],   # direct from engine (not back-calculated)
             "transp"    : out["transp"],
             "drainage"  : out["drainage"],
-            "et"        : actual_es + out["transp"],
+            "et"        : out["et"],
             "sw_total"  : sw_total,
             "pasw"      : round(pasw, 2),
             "sw_layers" : sw.copy().tolist(),
