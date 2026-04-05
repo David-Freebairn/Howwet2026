@@ -51,10 +51,10 @@ def _search(query: str):
     return search_stations(query)
 
 
-_SILO_CACHE_V = "v4"
+SILO_CACHE_V = "v4"
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id: int, start: str, end: str, _v: str = _SILO_CACHE_V) -> pd.DataFrame:
+def _fetch(station_id: int, start: str, end: str, cache_version: str = SILO_CACHE_V) -> pd.DataFrame:
     return fetch_station_rainfall(station_id, start, end)
 
 

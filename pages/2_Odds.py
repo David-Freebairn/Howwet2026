@@ -54,10 +54,10 @@ def _search(term):
     return search_stations(term)
 
 
-_SILO_CACHE_V = "v4"
+SILO_CACHE_V = "v4"
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def _fetch(station_id, start, end, _v=_SILO_CACHE_V):
+def _fetch(station_id, start, end, cache_version=SILO_CACHE_V):
     return fetch_patched_point(station_id, start, end, variables="R")
 
 
