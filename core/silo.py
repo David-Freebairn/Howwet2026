@@ -5,10 +5,18 @@ SILO Patched Point API helpers used by all pages.
 
 Public API
 ----------
-search_stations(query)                       -> list of station dicts
+search_stations(query)                         -> list of station dicts
 fetch_station_rainfall(station_id, start, end) -> pd.DataFrame
 fetch_patched_point(station_id, start, end)    -> pd.DataFrame
 fetch_station_met(station_id, start, end)      -> pd.DataFrame
+
+WAF note
+--------
+SILO's firewall blocks requests where the 'comment' parameter has
+URL-encoded commas (%2C). The fix is to build the URL manually so
+commas stay as literal characters. The requests library always
+encodes commas; urllib.request.urlopen with a hand-built URL string
+does not — so we use that here.
 """
 
 import urllib.parse
@@ -16,9 +24,8 @@ import urllib.request
 import io
 import pandas as pd
 import numpy as np
-from pathlib import Path
 
-# ── Config ──────────────────────────────────────────────────────────────────
+# ── Config ───────────────────────────────────────────────────────────────────
 _BASE  = "https://www.longpaddock.qld.gov.au/cgi-bin/silo/PatchedPointDataset.php"
 _EMAIL = "david.freebairn@gmail.com"
 
@@ -32,21 +39,19 @@ _HEADERS = {
     "Referer": "https://www.longpaddock.qld.gov.au/silo/",
 }
 
+# All variables — commas must stay literal in the URL (not %2C)
+_VARIABLES = "daily_rain,max_temp,min_temp,evap_pan,radiation"
+
 
 # ── Station search ───────────────────────────────────────────────────────────
 
 def search_stations(query: str) -> list:
-    """
-    Search SILO for stations matching a name fragment.
-
-    Returns list of dicts:
-        { id, name, label, lat, lon, state }
-    """
     url = (f"{_BASE}?format=name"
            f"&nameFrag={urllib.parse.quote(query.strip())}"
            f"&username={urllib.parse.quote(_EMAIL)}")
     try:
-        with urllib.request.urlopen(url, timeout=15) as resp:
+        req = urllib.request.Request(url, headers=_HEADERS)
+        with urllib.request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode("utf-8", errors="replace")
     except Exception as exc:
         raise RuntimeError(f"SILO station search failed: {exc}") from exc
@@ -70,14 +75,8 @@ def search_stations(query: str) -> list:
                 label += f"  [{state}]"
             if lat is not None and lon is not None:
                 label += f"  ({lat:.3f}, {lon:.3f})"
-            stations.append({
-                "id":    sid,
-                "name":  name,
-                "label": label,
-                "lat":   lat,
-                "lon":   lon,
-                "state": state,
-            })
+            stations.append({"id": sid, "name": name, "label": label,
+                              "lat": lat, "lon": lon, "state": state})
         except (ValueError, IndexError):
             continue
     return stations
@@ -87,121 +86,112 @@ def search_stations(query: str) -> list:
 
 def fetch_station_met(station_id: int, start: str, end: str) -> pd.DataFrame:
     """
-    Fetch SILO patched-point data for a station number.
+    Fetch SILO patched-point data for a station.
 
-    Returns DataFrame indexed by date with columns:
-        rain, epan, tmax, tmin, tmean, radiation, year, month, day, doy
-
-    Fetches evap_pan as a SEPARATE request because the SILO WAF silently
-    drops it when requested alongside other variables. Falls back to a
-    radiation-based estimate if evap_pan is still unavailable.
+    Builds the URL manually so commas in the comment parameter are NOT
+    percent-encoded. Encoding them as %2C triggers the SILO WAF.
     """
-    import requests as _req
+    base_params = (
+        f"station={station_id}"
+        f"&start={start}"
+        f"&finish={end}"
+        f"&format=csv"
+        f"&comment={_VARIABLES}"
+        f"&username={urllib.parse.quote(_EMAIL)}"
+        f"&password=apirequest"
+    )
+    url = f"{_BASE}?{base_params}"
 
-    def _fetch_var(var: str) -> str:
-        """Single-variable fetch — avoids WAF multi-var block."""
-        params = {
-            "station":  station_id,
-            "start":    start,
-            "finish":   end,
-            "format":   "csv",
-            "comment":  var,
-            "username": _EMAIL,
-            "password": "apirequest",
-        }
-        r = _req.get(_BASE, params=params, headers=_HEADERS, timeout=120)
-        r.raise_for_status()
-        return r.text
-
-    def _parse(raw: str) -> pd.DataFrame:
-        """Parse SILO CSV — handles YYYYMMDD and YYYY-MM-DD date formats."""
-        lines = raw.splitlines()
-        hi = next(
-            (i for i, ln in enumerate(lines)
-             if ln.strip().lower().startswith("date") or
-                ln.strip().lower().startswith("yyyy")),
-            None,
-        )
-        if hi is None:
-            raise ValueError(
-                f"No header row in SILO response for station {station_id}.\n"
-                f"Preview: {raw[:400]}"
-            )
-        df = pd.read_csv(io.StringIO("\n".join(lines[hi:])))
-        df.columns = [c.strip().lower() for c in df.columns]
-
-        date_col = next(
-            (c for c in df.columns if "date" in c or "yyyy" in c), None
-        )
-        if date_col is None:
-            raise ValueError(
-                f"No date column for station {station_id}. "
-                f"Columns: {list(df.columns)}"
-            )
-
-        sample = str(df[date_col].iloc[0]).strip()
-        fmt = "%Y%m%d" if (len(sample) == 8 and sample.isdigit()) else "%Y-%m-%d"
-        df.index = pd.to_datetime(df[date_col].astype(str), format=fmt)
-        df.index.name = "date"
-        return df
-
-    # ── 1. Main variables ────────────────────────────────────────────────────
-    raw_main = _fetch_var("daily_rain,max_temp,min_temp,radiation")
-    df_main  = _parse(raw_main)
-
-    col_map = {
-        "daily_rain":             "rain",
-        "rain":                   "rain",
-        "max_temp":               "tmax",
-        "maximum_temperature":    "tmax",
-        "min_temp":               "tmin",
-        "minimum_temperature":    "tmin",
-        "radiation":              "radiation",
-        "solar_radiation":        "radiation",
-    }
-    out = pd.DataFrame(index=df_main.index)
-    for src, dst in col_map.items():
-        if src in df_main.columns and dst not in out.columns:
-            out[dst] = df_main[src].values
-
-    for col in ["rain", "tmax", "tmin", "radiation"]:
-        if col not in out.columns:
-            out[col] = np.nan
-
-    # ── 2. Fetch evap_pan separately ─────────────────────────────────────────
     try:
-        raw_evap = _fetch_var("evap_pan")
-        df_evap  = _parse(raw_evap)
-        for src in ["evap_pan", "evap", "epan", "evaporation",
-                    "evap_morton_lake", "evap_morton_wet", "evap_asce"]:
-            if src in df_evap.columns and df_evap[src].fillna(0).sum() > 1.0:
-                out["epan"] = df_evap[src].values
-                break
-    except Exception:
-        pass
+        req = urllib.request.Request(url, headers=_HEADERS)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except Exception as exc:
+        raise RuntimeError(
+            f"SILO fetch failed for station {station_id}: {exc}"
+        ) from exc
 
-    # ── 3. Fallback: estimate from radiation + temperature ───────────────────
-    if "epan" not in out.columns or out["epan"].fillna(0).sum() < 1.0:
-        try:
-            rs    = out["radiation"].fillna(out["radiation"].median())
-            tmean = ((out["tmax"].fillna(25) + out["tmin"].fillna(15)) / 2)
-            out["epan"] = (rs * 0.50 + tmean * 0.06).clip(lower=0.5)
-        except Exception:
-            out["epan"] = 5.0
+    if "<html" in raw.lower()[:200]:
+        raise RuntimeError(
+            f"SILO WAF rejected request for station {station_id}.\n"
+            f"Response: {raw[:300]}"
+        )
 
-    # ── Clean up ─────────────────────────────────────────────────────────────
-    out["epan"]  = out["epan"].fillna(0.0)
-    out["rain"]  = out["rain"].fillna(0.0)
+    return _parse(raw, station_id)
+
+
+def _parse(raw: str, station_id: int) -> pd.DataFrame:
+    lines = raw.splitlines()
+    hi = next(
+        (i for i, ln in enumerate(lines)
+         if ln.strip().lower().startswith("date") or
+            ln.strip().lower().startswith("yyyy")),
+        None,
+    )
+    if hi is None:
+        raise RuntimeError(
+            f"No header row in SILO response for station {station_id}.\n"
+            f"Preview: {raw[:400]}"
+        )
+
+    df_raw = pd.read_csv(io.StringIO("\n".join(lines[hi:])))
+    df_raw.columns = [c.strip().lower() for c in df_raw.columns]
+
+    date_col = next(
+        (c for c in df_raw.columns if "date" in c or "yyyy" in c), None
+    )
+    if date_col is None:
+        raise RuntimeError(
+            f"No date column for station {station_id}. "
+            f"Columns: {list(df_raw.columns)}"
+        )
+
+    sample = str(df_raw[date_col].iloc[0]).strip()
+    fmt = "%Y%m%d" if (len(sample) == 8 and sample.isdigit()) else "%Y-%m-%d"
+    index = pd.to_datetime(df_raw[date_col].astype(str), format=fmt)
+
+    out = pd.DataFrame(index=index)
+    out.index.name = "date"
+
+    def _col(*candidates):
+        for c in candidates:
+            if c in df_raw.columns:
+                return pd.to_numeric(df_raw[c], errors="coerce").values
+        return np.full(len(df_raw), np.nan)
+
+    out["rain"]      = _col("daily_rain", "rain", "rainfall")
+    out["tmax"]      = _col("max_temp",   "maximum_temperature", "tmax")
+    out["tmin"]      = _col("min_temp",   "minimum_temperature", "tmin")
+    out["epan"]      = _col("evap_pan",   "evap", "evaporation", "epan", "pan_evap")
+    out["radiation"] = _col("radiation",  "solar_radiation")
+
     out["tmean"] = (out["tmax"] + out["tmin"]) / 2.0
     out["year"]  = out.index.year
     out["month"] = out.index.month
     out["day"]   = out.index.day
     out["doy"]   = out.index.day_of_year
 
+    out["rain"] = out["rain"].fillna(0.0).clip(lower=0.0)
+    out["epan"] = out["epan"].fillna(0.0)
+
+    # Fallback: estimate epan from radiation if missing
+    if out["epan"].sum() < 1.0:
+        try:
+            rs    = out["radiation"].fillna(out["radiation"].median())
+            tmean = out["tmean"].fillna(20.0)
+            out["epan"] = (rs * 0.50 + tmean * 0.06).clip(lower=0.5)
+        except Exception:
+            out["epan"] = 5.0
+
+    if len(out) == 0:
+        raise RuntimeError(
+            f"No valid rows parsed from SILO for station {station_id}."
+        )
+
     return out
 
 
-# ── Convenience wrappers (keep existing call signatures working) ─────────────
+# ── Convenience wrappers ─────────────────────────────────────────────────────
 
 def fetch_station_rainfall(station_id: int, start: str, end: str) -> pd.DataFrame:
     """Fetch daily rainfall only. Used by 1_Season.py."""
