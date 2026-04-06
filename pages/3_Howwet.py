@@ -362,7 +362,7 @@ with st.container(border=True):
 with st.container(border=True):
     st.markdown('<p class="section-title">Set up query</p>', unsafe_allow_html=True)
 
-    r1a, r1b, r1c, r1d, r1e, r1f = st.columns([1.6, 1.4, 0.7, 1.6, 0.65, 0.6])
+    r1a, r1b, r1d, r1e = st.columns([1.0, 2.4, 1.0, 2.0])
     with r1a:
         st.markdown('<span style="font-size:1rem">Soil type</span>', unsafe_allow_html=True)
     with r1b:
@@ -374,8 +374,6 @@ with st.container(border=True):
         else:
             st.error("No .soil files found in data/ folder")
             soil_path = None
-    with r1c:
-        st.markdown("")
     with r1d:
         st.markdown('<span style="font-size:1rem">Start of fallow</span>', unsafe_allow_html=True)
     with r1e:
@@ -383,10 +381,9 @@ with st.container(border=True):
                                    value=today - timedelta(days=180),
                                    min_value=min_start, max_value=yesterday,
                                    format="DD/MM/YYYY", key="hw_start")
-    with r1f:
-        st.markdown("")
 
-    r2a, r2b, r2c, r2d, r2e, r2f = st.columns([1.6, 1.4, 0.7, 1.6, 0.45, 0.8])
+
+    r2a, r2b, r2c = st.columns([1.0, 1.0, 1.0])
     with r2a:
         st.markdown('<span style="font-size:1rem">Soil water at start</span>', unsafe_allow_html=True)
     with r2b:
@@ -647,15 +644,15 @@ if run_clicked:
         ) if has_temps else ""
 
         st.markdown(f"""
-| Component | mm | % of rain |
-|---|---|---|
-| Rainfall | {rain_t:.1f} | 100 |
+| Component | mm | % of rainfall |
+|---|---:|---:|
+| Rainfall | {rain_t:.1f} | 100.0 |
 | Runoff | {ro_t:.1f} | {ro_t/rain_t*100:.1f} |
-| Soil evap | {es_t:.1f} | {es_t/rain_t*100:.1f} |
+| Soil evaporation | {es_t:.1f} | {es_t/rain_t*100:.1f} |
 | Transpiration | {tr_t:.1f} | {tr_t/rain_t*100:.1f} |
 | Deep drainage | {dr_t:.1f} | {dr_t/rain_t*100:.1f} |
-| Δ Soil water | {dsw:.1f} | {dsw/rain_t*100:.1f} |
-| **Water check** | **{err:.3f}** | |
+| Change in soil water | {dsw:.1f} | {dsw/rain_t*100:.1f} |
+| **Balance check** | **{abs(err):.2f}** | *(should be ~0)* |
         """)
         epan_mean = recent_df['epan'].mean() if 'epan' in recent_df.columns else 0.0
         epan_src  = "SILO pan evap" if recent_met["epan"].fillna(0).sum() > 10 else "estimated from radiation/temp"
